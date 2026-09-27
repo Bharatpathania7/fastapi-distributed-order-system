@@ -2,13 +2,15 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.workers.order_worker import create_consumer_group
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
     print("Application starting...")
+
+    await create_consumer_group()
 
     yield
 
-    # Shutdown
-    print("Application shutting down...")
+    print("Application shutting down")

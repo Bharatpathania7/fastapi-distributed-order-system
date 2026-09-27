@@ -1,0 +1,37 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: distributed-order-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: order_system
+      POSTGRES_USER: order_user
+      POSTGRES_PASSWORD: order_password
+
+    ports:
+      - "5433:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U order_user -d order_system"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    container_name: distributed-order-redis
+    restart: unless-stopped
+
+    ports:
+      - "6379:6379"
+
+    volumes:
+      - redis_data:/data
+
+volumes:
+  postgres_data:
+  redis_data:
