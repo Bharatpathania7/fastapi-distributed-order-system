@@ -59,6 +59,7 @@ async def process_order(
     async with AsyncSessionLocal() as session:
         async with session.begin():
 
+            # Lock the order row so only one worker can process it
             result = await session.execute(
                 select(Order)
                 .where(Order.id == order_id)
@@ -72,6 +73,34 @@ async def process_order(
                     f"Order not found: {order_id}"
                 )
 
+            # Check whether this payment has already been audited
+            audit_result = await session.execute(
+                select(PaymentAuditLog)
+                .where(
+                    PaymentAuditLog.idempotency_key
+                    == idempotency_key
+                )
+            )
+
+            existing_audit = audit_result.scalar_one_or_none()
+
+            if existing_audit:
+                print(
+                    f"[WORKER] Payment already processed "
+                    f"idempotency_key={idempotency_key} "
+                    f"status={existing_audit.status}"
+                )
+
+                # Make sure the order is not left in PENDING
+                if order.status == "PENDING":
+                    if existing_audit.status == "SUCCESS":
+                        order.status = "PROCESSED"
+                    else:
+                        order.status = "FAILED"
+
+                return
+
+            # Order was already completed without an audit record
             if order.status != "PENDING":
                 print(
                     f"[WORKER] Order {order_id} "
@@ -80,6 +109,7 @@ async def process_order(
                 )
                 return
 
+            # Process payment
             payment_success = (
                 await PaymentService.process_payment(
                     order_id=order.id,
@@ -88,6 +118,7 @@ async def process_order(
                 )
             )
 
+            # Update order + audit atomically
             if payment_success:
                 order.status = "PROCESSED"
                 audit_status = "SUCCESS"
@@ -105,7 +136,8 @@ async def process_order(
 
             print(
                 f"[WORKER] Order {order_id} "
-                f"updated to {order.status}"
+                f"updated to {order.status} "
+                f"with audit status={audit_status}"
             )
 
 
